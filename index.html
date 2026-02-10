@@ -140,4 +140,286 @@
         <button class="btn btn-icon btn-large" id="prev-btn" onclick="prevStep()">◀ 戻る</button>
         <button class="btn btn-icon btn-large" id="next-btn" onclick="nextStep()">次へ ▶</button>
         <button class="btn btn-large full-width" id="pause-btn" onclick="togglePause()" style="background:var(--accent-color); color:#000;">一時停止</button>
-        <button class="btn btn-large full-width" id="stop-alarm-btn" onclick="stopAlarmUI()">アラームを止
+        <button class="btn btn-large full-width" id="stop-alarm-btn" onclick="stopAlarmUI()">アラームを止める</button>
+        <button class="btn btn-danger btn-large full-width" id="back-btn" onclick="stopTimer()">設定に戻る</button>
+    </div>
+</div>
+
+<script>
+    // --- Data Management ---
+    const STORAGE_KEY = 'active_cycle_timer_steps';
+    
+    // 【初期値のカスタマイズ】
+    let steps = [
+        { label: "PRタイム", m: 2, s: 0 },
+        { label: "インターバル", m: 0, s: 3 },
+        { label: "①質問タイム", m: 1, s: 0 },
+        { label: "インターバル", m: 0, s: 3 },
+        { label: "②質問タイム", m: 1, s: 0 },
+        { label: "インターバル", m: 0, s: 3 },
+        { label: "③質問タイム", m: 1, s: 0 },
+        { label: "インターバル", m: 0, s: 3 },
+        { label: "④質問タイム", m: 1, s: 0 }
+    ];
+
+    let currentStepIndex = 0;
+    let timeLeft = 0;
+    let timerId = null;
+    let isPaused = false;
+    let alarmIntervalId = null;
+    let alarmTimeoutId = null;
+
+    function autoSave() {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(steps));
+    }
+
+    // --- Sound System (Kitchen Timer Style) ---
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    function createBeep(freq, duration, startTime) {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(freq, startTime);
+        gain.gain.setValueAtTime(0.8, startTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+        osc.start(startTime);
+        osc.stop(startTime + duration);
+    }
+
+    function playStepSound() {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const now = audioCtx.currentTime;
+        createBeep(2400, 0.1, now);
+        createBeep(2400, 0.1, now + 0.15);
+    }
+
+    function playFinalAlarm() {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const playSequence = () => {
+            const now = audioCtx.currentTime;
+            for (let i = 0; i < 4; i++) {
+                createBeep(2400, 0.08, now + (i * 0.15));
+            }
+        };
+        playSequence();
+        alarmIntervalId = setInterval(playSequence, 1000);
+        alarmTimeoutId = setTimeout(() => stopAlarmUI(), 30000);
+    }
+
+    function stopAlarmUI() {
+        if (alarmIntervalId) { clearInterval(alarmIntervalId); alarmIntervalId = null; }
+        if (alarmTimeoutId) { clearTimeout(alarmTimeoutId); alarmTimeoutId = null; }
+        document.getElementById('stop-alarm-btn').style.display = 'none';
+        document.getElementById('pause-btn').style.display = 'inline-flex';
+        document.getElementById('prev-btn').style.visibility = 'visible';
+        document.getElementById('next-btn').style.visibility = 'visible';
+    }
+
+    // --- UI Logic ---
+    function renderSteps() {
+        const list = document.getElementById('step-list');
+        if (!list) return;
+        list.innerHTML = '';
+        steps.forEach((step, index) => {
+            const div = document.createElement('div');
+            div.className = 'step-item';
+            div.innerHTML = `
+                <span class="handle" style="color:#666; padding:0 5px; cursor:grab;">☰</span>
+                <input type="text" value="${step.label}" onchange="updateStep(${index}, 'label', this.value)" style="flex:1; min-width:60px">
+                <input type="number" value="${step.m}" onchange="updateStep(${index}, 'm', this.value)" style="width:38px">
+                <span style="font-size:0.7rem">分</span>
+                <input type="number" value="${step.s}" onchange="updateStep(${index}, 's', this.value)" style="width:38px">
+                <span style="font-size:0.7rem">秒</span>
+                <button class="btn btn-icon" onclick="duplicateStep(${index})" title="複製">❐</button>
+                <button class="btn btn-icon btn-danger" onclick="removeStep(${index})">✕</button>
+            `;
+            list.appendChild(div);
+        });
+    }
+
+    function updateStep(index, field, value) {
+        if (field === 'label') steps[index].label = value;
+        else steps[index][field] = parseInt(value) || 0;
+        autoSave();
+    }
+
+    function addStep() {
+        steps.push({ label: "名称未設定", m: 1, s: 0 });
+        renderSteps();
+        autoSave();
+    }
+
+    function duplicateStep(index) {
+        const copy = { ...steps[index] };
+        steps.splice(index + 1, 0, copy);
+        renderSteps();
+        autoSave();
+    }
+
+    function removeStep(index) {
+        if (steps.length > 1) { 
+            steps.splice(index, 1); 
+            renderSteps(); 
+            autoSave();
+        }
+    }
+
+    function startTimer() {
+        if (steps.length === 0) return;
+        stopAlarmUI();
+        currentStepIndex = 0;
+        initStep(false); 
+        document.getElementById('setup-view').style.display = 'none';
+        document.getElementById('timer-view').style.display = 'flex';
+        document.getElementById('pause-btn').style.display = 'inline-flex';
+        document.getElementById('stop-alarm-btn').style.display = 'none';
+        document.getElementById('prev-btn').style.visibility = 'visible';
+        document.getElementById('next-btn').style.visibility = 'visible';
+        if (timerId) clearInterval(timerId);
+        timerId = setInterval(tick, 1000);
+    }
+
+    function initStep(playSound = true) {
+        const step = steps[currentStepIndex];
+        timeLeft = (step.m * 60) + (step.s || 0);
+        updateDisplay();
+        if (playSound) playStepSound();
+    }
+
+    function updateDisplay() {
+        const step = steps[currentStepIndex];
+        document.getElementById('current-label').innerText = `${step.label} (${currentStepIndex + 1}/${steps.length})`;
+        const m = Math.floor(timeLeft / 60);
+        const s = timeLeft % 60;
+        document.getElementById('time-display').innerText = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+
+    function tick() {
+        if (isPaused) return;
+        timeLeft--;
+        if (timeLeft < 0) nextStep();
+        else updateDisplay();
+    }
+
+    function nextStep() {
+        currentStepIndex++;
+        if (currentStepIndex < steps.length) initStep(true);
+        else finish();
+    }
+
+    function prevStep() {
+        stopAlarmUI();
+        currentStepIndex = Math.max(0, currentStepIndex - 1);
+        initStep(true);
+    }
+
+    function togglePause() {
+        isPaused = !isPaused;
+        document.getElementById('pause-btn').innerText = isPaused ? "再開" : "一時停止";
+    }
+
+    function stopTimer() {
+        clearInterval(timerId);
+        stopAlarmUI();
+        isPaused = false;
+        document.getElementById('setup-view').style.display = 'block';
+        document.getElementById('timer-view').style.display = 'none';
+        document.getElementById('pause-btn').innerText = "一時停止";
+    }
+
+    function finish() {
+        clearInterval(timerId);
+        timerId = null;
+        document.getElementById('time-display').innerText = "00:00";
+        document.getElementById('current-label').innerText = "ALL FINISHED!";
+        document.getElementById('pause-btn').style.display = 'none';
+        document.getElementById('prev-btn').style.visibility = 'hidden';
+        document.getElementById('next-btn').style.visibility = 'hidden';
+        document.getElementById('stop-alarm-btn').style.display = 'inline-flex';
+        playFinalAlarm();
+    }
+
+    function savePreset() {
+        const name = document.getElementById('preset-name').value || "無題";
+        const presets = JSON.parse(localStorage.getItem('cycle_timer_presets') || '{}');
+        presets[name] = steps;
+        localStorage.setItem('cycle_timer_presets', JSON.stringify(presets));
+        loadPresetList();
+    }
+
+    function loadPresetList() {
+        const container = document.getElementById('preset-list');
+        const presets = JSON.parse(localStorage.getItem('cycle_timer_presets') || '{}');
+        container.innerHTML = '';
+        for (let name in presets) {
+            const btn = document.createElement('button');
+            btn.className = 'btn btn-icon';
+            btn.innerText = name;
+            btn.onclick = () => { steps = presets[name]; renderSteps(); autoSave(); };
+            container.appendChild(btn);
+        }
+    }
+
+    function generateShareUrl() {
+        const data = btoa(encodeURIComponent(JSON.stringify(steps)));
+        const url = window.location.origin + window.location.pathname + '#data=' + data;
+        navigator.clipboard.writeText(url);
+        alert("共有URLをコピーしました");
+    }
+
+    // --- Initialization ---
+    window.onload = () => {
+        // 1. 保存データの確認
+        const savedData = localStorage.getItem(STORAGE_KEY);
+        // 2. 共有URLデータの確認
+        const hash = window.location.hash;
+
+        if (hash.startsWith('#data=')) {
+            // URL共有がある場合はそれを最優先
+            try {
+                const data = JSON.parse(decodeURIComponent(atob(hash.replace('#data=', ''))));
+                if (Array.isArray(data)) { steps = data; autoSave(); }
+            } catch (e) { console.error("URL load failed", e); }
+        } else if (savedData) {
+            // URL共有がなく、保存データがある場合は保存データを表示
+            try {
+                const parsed = JSON.parse(savedData);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    steps = parsed;
+                }
+            } catch (e) { console.error("Auto-load failed", e); }
+        }
+        // いずれもなければ、コード内の「初期値」がそのまま使われる
+
+        renderSteps();
+        loadPresetList();
+
+        try {
+            if (typeof Sortable !== 'undefined') {
+                Sortable.create(document.getElementById('step-list'), {
+                    handle: '.handle',
+                    animation: 150,
+                    onEnd: () => {
+                        const newSteps = [];
+                        document.querySelectorAll('.step-item').forEach(el => {
+                            const inputs = el.querySelectorAll('input');
+                            newSteps.push({ 
+                                label: inputs[0].value, 
+                                m: parseInt(inputs[1].value)||0, 
+                                s: parseInt(inputs[2].value)||0 
+                            });
+                        });
+                        steps = newSteps;
+                        autoSave();
+                    }
+                });
+            }
+        } catch (e) { console.warn("Sortable inactive"); }
+    };
+</script>
+
+</body>
+</html>
