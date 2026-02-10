@@ -13,78 +13,75 @@
             --accent-color: #00e5ff;
             --danger-color: #cf6679;
             --success-color: #03dac6;
-            --input-bg: #2c2c2c;
         }
 
-        * { box-sizing: border-box; }
-
         body {
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             background-color: var(--bg-color);
             color: var(--text-color);
             margin: 0;
-            padding: 0;
             display: flex;
             justify-content: center;
             min-height: 100vh;
-            -webkit-tap-highlight-color: transparent;
+            /* スマホでのバウンススクロール防止 */
+            overscroll-behavior-y: none;
         }
 
         .container {
             width: 100%;
-            max-width: 500px; /* スマホ向けに少し絞る */
+            max-width: 500px; /* 少しスリムに */
             padding: 15px;
-            padding-bottom: 100px; /* 下部に余裕を持たせる */
+            box-sizing: border-box;
         }
 
-        h1 { text-align: center; color: var(--accent-color); font-weight: 300; letter-spacing: 2px; font-size: 1.5rem; }
+        h1 { 
+            text-align: center; 
+            color: var(--accent-color); 
+            font-weight: 300; 
+            letter-spacing: 2px;
+            font-size: 1.5rem;
+            margin: 10px 0 20px;
+        }
 
         /* Setup View */
+        #setup-view { display: block; }
         .step-item {
             background: var(--card-bg);
             margin-bottom: 12px;
             padding: 12px;
             border-radius: 12px;
-            display: grid;
-            grid-template-columns: 30px 1fr auto;
-            grid-template-areas: 
-                "handle label delete"
-                "handle time duplicate";
-            gap: 10px;
+            display: flex;
             align-items: center;
+            gap: 8px;
+            cursor: grab;
             border-left: 5px solid var(--accent-color);
             box-shadow: 0 4px 6px rgba(0,0,0,0.3);
         }
 
-        .drag-handle { grid-area: handle; color: #555; cursor: grab; font-size: 1.2rem; }
-        .input-label { grid-area: label; width: 100%; }
-        .input-time-group { grid-area: time; display: flex; align-items: center; gap: 5px; }
-        .btn-delete { grid-area: delete; }
-        .btn-dup { grid-area: duplicate; }
-
         input[type="text"], input[type="number"] {
-            background: var(--input-bg);
+            background: #2c2c2c;
             border: 1px solid #444;
             color: white;
-            padding: 10px;
+            padding: 10px 8px; /* 少し大きく */
             border-radius: 6px;
-            font-size: 16px; /* iOSのズーム防止 */
+            font-size: 16px; /* iOSの自動ズーム防止のために16px以上に設定 */
         }
-
-        .input-time-group input { width: 60px; text-align: center; }
 
         .btn {
             cursor: pointer;
             border: none;
             border-radius: 8px;
-            padding: 12px;
+            padding: 12px 15px;
             font-weight: bold;
             transition: transform 0.1s, opacity 0.2s;
-            display: flex;
+            display: inline-flex;
             align-items: center;
             justify-content: center;
+            touch-action: manipulation;
         }
         .btn:active { transform: scale(0.95); }
-        .btn-add { background: var(--accent-color); color: #000; width: 100%; margin: 20px 0; font-size: 1rem; }
-        .btn-start { background: var(--success-color); color: #000; width: 100%; font-size: 1.4rem; padding: 18px; position: sticky; bottom: 20px; z-index: 10; box-shadow: 0 -5px 20px rgba(0,0,0,0.5); }
-        .btn-icon { background:
+        
+        .btn-add { background: var(--accent-color); color: #000; width: 100%; margin-bottom: 20px; }
+        .btn-start { background: var(--success-color); color: #000; width: 100%; font-size: 1.2rem; margin-top: 10px; height: 60px; }
+        .btn-icon { background: #2c2c2c; color: var(--text-color); border: 1px solid #444; min-width: 40px; }
+        .btn-danger { color: var(--danger-color); }
