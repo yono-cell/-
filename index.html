@@ -16,32 +16,24 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
             background-color: var(--bg-color);
             color: var(--text-color);
             margin: 0;
             display: flex;
             justify-content: center;
             min-height: 100vh;
-            /* スマホでのバウンススクロール防止 */
             overscroll-behavior-y: none;
         }
 
         .container {
             width: 100%;
-            max-width: 500px; /* 少しスリムに */
+            max-width: 500px;
             padding: 15px;
             box-sizing: border-box;
         }
 
-        h1 { 
-            text-align: center; 
-            color: var(--accent-color); 
-            font-weight: 300; 
-            letter-spacing: 2px;
-            font-size: 1.5rem;
-            margin: 10px 0 20px;
-        }
+        h1 { text-align: center; color: var(--accent-color); font-weight: 300; font-size: 1.5rem; margin: 10px 0 20px; }
 
         /* Setup View */
         #setup-view { display: block; }
@@ -53,35 +45,270 @@
             display: flex;
             align-items: center;
             gap: 8px;
-            cursor: grab;
             border-left: 5px solid var(--accent-color);
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
         }
 
         input[type="text"], input[type="number"] {
             background: #2c2c2c;
             border: 1px solid #444;
             color: white;
-            padding: 10px 8px; /* 少し大きく */
+            padding: 10px 8px;
             border-radius: 6px;
-            font-size: 16px; /* iOSの自動ズーム防止のために16px以上に設定 */
+            font-size: 16px; /* iOSズーム防止 */
         }
 
         .btn {
-            cursor: pointer;
-            border: none;
-            border-radius: 8px;
-            padding: 12px 15px;
-            font-weight: bold;
-            transition: transform 0.1s, opacity 0.2s;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
+            cursor: pointer; border: none; border-radius: 8px;
+            padding: 12px 15px; font-weight: bold;
+            display: inline-flex; align-items: center; justify-content: center;
             touch-action: manipulation;
         }
-        .btn:active { transform: scale(0.95); }
-        
+        .btn:active { opacity: 0.7; }
         .btn-add { background: var(--accent-color); color: #000; width: 100%; margin-bottom: 20px; }
         .btn-start { background: var(--success-color); color: #000; width: 100%; font-size: 1.2rem; margin-top: 10px; height: 60px; }
-        .btn-icon { background: #2c2c2c; color: var(--text-color); border: 1px solid #444; min-width: 40px; }
+        .btn-icon { background: #2c2c2c; color: var(--text-color); border: 1px solid #444; }
         .btn-danger { color: var(--danger-color); }
+
+        /* Timer View */
+        #timer-view {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--bg-color);
+            flex-direction: column;
+            justify-content: space-around;
+            align-items: center;
+            z-index: 1000;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        #current-label { font-size: clamp(1.2rem, 5vw, 2rem); color: var(--accent-color); }
+        #time-display { 
+            font-size: clamp(4rem, 20vw, 10rem); 
+            font-family: monospace; 
+            font-variant-numeric: tabular-nums;
+        }
+        
+        .timer-controls { 
+            display: grid; grid-template-columns: 1fr 1fr; gap: 15px; width: 100%; max-width: 400px;
+        }
+        .btn-large { padding: 18px; font-size: 1rem; }
+        .full-width { grid-column: span 2; }
+
+        .utility-zone { margin-top: 40px; border-top: 1px solid #333; padding-top: 20px; }
+        .preset-actions { display: flex; gap: 8px; margin-bottom: 10px; }
+        #preset-list { display: flex; flex-wrap: wrap; gap: 5px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div id="setup-view">
+        <h1>CYCLE TIMER</h1>
+        <div id="step-list"></div>
+        <button class="btn btn-add" onclick="addStep()">＋ ステップを追加</button>
+        <button class="btn btn-start" onclick="startTimer()">タイマー開始</button>
+
+        <div class="utility-zone">
+            <div class="preset-actions">
+                <input type="text" id="preset-name" placeholder="プリセット名" style="flex:1">
+                <button class="btn btn-icon" onclick="savePreset()">保存</button>
+            </div>
+            <div id="preset-list"></div>
+            <button class="btn btn-icon" style="width:100%; margin-top:15px;" onclick="generateShareUrl()">共有URLをコピー</button>
+        </div>
+    </div>
+</div>
+
+<div id="timer-view">
+    <div id="current-label">READY</div>
+    <div id="time-display">00:00</div>
+    <div class="timer-controls">
+        <button class="btn btn-icon btn-large" onclick="prevStep()">◀ 戻る</button>
+        <button class="btn btn-icon btn-large" onclick="nextStep()">次へ ▶</button>
+        <button class="btn btn-large full-width" id="pause-btn" onclick="togglePause()" style="background:var(--accent-color); color:#000;">一時停止</button>
+        <button class="btn btn-danger btn-large full-width" onclick="stopTimer()">設定に戻る</button>
+    </div>
+</div>
+
+<script>
+    // --- 初期データ ---
+    let steps = [
+        { label: "準備", m: 2, s: 0 },
+        { label: "インターバル", m: 0, s: 3 },
+        { label: "本番", m: 1, s: 0 }
+    ];
+    let currentStepIndex = 0;
+    let timeLeft = 0;
+    let timerId = null;
+    let isPaused = false;
+
+    // 音声処理
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playBeep() {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        osc.start();
+        gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.5);
+        osc.stop(audioCtx.currentTime + 0.5);
+    }
+
+    // 描画処理
+    function renderSteps() {
+        const list = document.getElementById('step-list');
+        if (!list) return;
+        list.innerHTML = '';
+        steps.forEach((step, index) => {
+            const div = document.createElement('div');
+            div.className = 'step-item';
+            div.innerHTML = `
+                <span class="handle" style="color:#666; padding:0 5px">☰</span>
+                <input type="text" value="${step.label}" onchange="updateStep(${index}, 'label', this.value)" style="flex:2; min-width:60px">
+                <input type="number" value="${step.m}" onchange="updateStep(${index}, 'm', this.value)" style="width:40px">分
+                <input type="number" value="${step.s}" onchange="updateStep(${index}, 's', this.value)" style="width:40px">秒
+                <button class="btn btn-icon btn-danger" onclick="removeStep(${index})">✕</button>
+            `;
+            list.appendChild(div);
+        });
+    }
+
+    function updateStep(index, field, value) {
+        if (field === 'label') steps[index].label = value;
+        else steps[index][field] = parseInt(value) || 0;
+    }
+
+    function addStep() {
+        steps.push({ label: "名称未設定", m: 1, s: 0 });
+        renderSteps();
+    }
+
+    function removeStep(index) {
+        if (steps.length > 1) { steps.splice(index, 1); renderSteps(); }
+    }
+
+    // タイマー制御
+    function startTimer() {
+        currentStepIndex = 0;
+        initStep();
+        document.getElementById('setup-view').style.display = 'none';
+        document.getElementById('timer-view').style.display = 'flex';
+        if (timerId) clearInterval(timerId);
+        timerId = setInterval(tick, 1000);
+    }
+
+    function initStep() {
+        const step = steps[currentStepIndex];
+        timeLeft = (step.m * 60) + step.s;
+        updateDisplay();
+        playBeep();
+    }
+
+    function updateDisplay() {
+        const step = steps[currentStepIndex];
+        document.getElementById('current-label').innerText = `${step.label} (${currentStepIndex + 1}/${steps.length})`;
+        const m = Math.floor(timeLeft / 60);
+        const s = timeLeft % 60;
+        document.getElementById('time-display').innerText = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+
+    function tick() {
+        if (isPaused) return;
+        timeLeft--;
+        if (timeLeft < 0) nextStep();
+        else updateDisplay();
+    }
+
+    function nextStep() {
+        currentStepIndex++;
+        if (currentStepIndex < steps.length) initStep();
+        else { alert("完了！"); stopTimer(); }
+    }
+
+    function prevStep() {
+        currentStepIndex = Math.max(0, currentStepIndex - 1);
+        initStep();
+    }
+
+    function togglePause() {
+        isPaused = !isPaused;
+        document.getElementById('pause-btn').innerText = isPaused ? "再開" : "一時停止";
+    }
+
+    function stopTimer() {
+        clearInterval(timerId);
+        isPaused = false;
+        document.getElementById('setup-view').style.display = 'block';
+        document.getElementById('timer-view').style.display = 'none';
+    }
+
+    // プリセット保存
+    function savePreset() {
+        const name = document.getElementById('preset-name').value || "無題";
+        const presets = JSON.parse(localStorage.getItem('cycle_timer_presets') || '{}');
+        presets[name] = steps;
+        localStorage.setItem('cycle_timer_presets', JSON.stringify(presets));
+        loadPresetList();
+    }
+
+    function loadPresetList() {
+        const container = document.getElementById('preset-list');
+        const presets = JSON.parse(localStorage.getItem('cycle_timer_presets') || '{}');
+        container.innerHTML = '';
+        for (let name in presets) {
+            const btn = document.createElement('button');
+            btn.className = 'btn btn-icon';
+            btn.innerText = name;
+            btn.onclick = () => { steps = presets[name]; renderSteps(); };
+            container.appendChild(btn);
+        }
+    }
+
+    function generateShareUrl() {
+        const data = btoa(encodeURIComponent(JSON.stringify(steps)));
+        const url = window.location.origin + window.location.pathname + '#data=' + data;
+        navigator.clipboard.writeText(url);
+        alert("URLをコピーしました");
+    }
+
+    // 起動時の処理
+    window.onload = () => {
+        // 1. まず描画（最優先）
+        renderSteps();
+        loadPresetList();
+
+        // 2. URLからの読み込み
+        const hash = window.location.hash;
+        if (hash.startsWith('#data=')) {
+            try {
+                const data = JSON.parse(decodeURIComponent(atob(hash.replace('#data=', ''))));
+                if (Array.isArray(data)) { steps = data; renderSteps(); }
+            } catch (e) { console.error(e); }
+        }
+
+        // 3. 並び替え機能（読み込みに失敗してもタイマーを壊さないようtry-catchで囲む）
+        try {
+            if (typeof Sortable !== 'undefined') {
+                Sortable.create(document.getElementById('step-list'), {
+                    handle: '.handle',
+                    animation: 150,
+                    onEnd: () => {
+                        const newSteps = [];
+                        document.querySelectorAll('.step-item').forEach(el => {
+                            const inputs = el.querySelectorAll('input');
+                            newSteps.push({ label: inputs[0].value, m: parseInt(inputs[1].value)||0, s: parseInt(inputs[2].value)||0 });
+                        });
+                        steps = newSteps;
+                    }
+                });
+            }
+        } catch (e) { console.warn("Sortableの初期化に失敗しましたが、タイマーは利用可能です。"); }
+    };
+</script>
+
+</body>
+</html>
