@@ -16,7 +16,7 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background-color: var(--bg-color);
             color: var(--text-color);
             margin: 0;
@@ -33,40 +33,42 @@
             box-sizing: border-box;
         }
 
-        h1 { text-align: center; color: var(--accent-color); font-weight: 300; font-size: 1.5rem; margin: 10px 0 20px; }
+        h1 { text-align: center; color: var(--accent-color); font-weight: 300; font-size: 1.5rem; margin: 10px 0 20px; letter-spacing: 2px; }
 
         /* Setup View */
         #setup-view { display: block; }
         .step-item {
             background: var(--card-bg);
             margin-bottom: 12px;
-            padding: 12px;
+            padding: 12px 10px;
             border-radius: 12px;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
             border-left: 5px solid var(--accent-color);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
         }
 
         input[type="text"], input[type="number"] {
             background: #2c2c2c;
             border: 1px solid #444;
             color: white;
-            padding: 10px 8px;
+            padding: 10px 5px;
             border-radius: 6px;
-            font-size: 16px; /* iOSズーム防止 */
+            font-size: 16px;
         }
 
         .btn {
             cursor: pointer; border: none; border-radius: 8px;
-            padding: 12px 15px; font-weight: bold;
+            padding: 10px; font-weight: bold;
             display: inline-flex; align-items: center; justify-content: center;
             touch-action: manipulation;
+            transition: opacity 0.2s;
         }
-        .btn:active { opacity: 0.7; }
-        .btn-add { background: var(--accent-color); color: #000; width: 100%; margin-bottom: 20px; }
+        .btn:active { opacity: 0.6; }
+        .btn-add { background: var(--accent-color); color: #000; width: 100%; margin-bottom: 20px; height: 50px; }
         .btn-start { background: var(--success-color); color: #000; width: 100%; font-size: 1.2rem; margin-top: 10px; height: 60px; }
-        .btn-icon { background: #2c2c2c; color: var(--text-color); border: 1px solid #444; }
+        .btn-icon { background: #2c2c2c; color: var(--text-color); border: 1px solid #444; min-width: 38px; }
         .btn-danger { color: var(--danger-color); }
 
         /* Timer View */
@@ -83,20 +85,30 @@
             box-sizing: border-box;
         }
 
-        #current-label { font-size: clamp(1.2rem, 5vw, 2rem); color: var(--accent-color); }
+        #current-label { font-size: clamp(1.2rem, 5vw, 2rem); color: var(--accent-color); text-align: center; }
         #time-display { 
-            font-size: clamp(4rem, 20vw, 10rem); 
-            font-family: monospace; 
+            font-size: clamp(4.5rem, 22vw, 11rem); 
+            font-family: 'Courier New', monospace; 
             font-variant-numeric: tabular-nums;
+            font-weight: bold;
         }
         
         .timer-controls { 
             display: grid; grid-template-columns: 1fr 1fr; gap: 15px; width: 100%; max-width: 400px;
         }
-        .btn-large { padding: 18px; font-size: 1rem; }
+        .btn-large { padding: 20px; font-size: 1.1rem; }
         .full-width { grid-column: span 2; }
+        
+        /* 終了時専用ボタン */
+        #stop-alarm-btn { 
+            display: none; 
+            background: var(--danger-color); 
+            color: #fff; 
+            animation: blink 0.5s infinite alternate;
+        }
+        @keyframes blink { from { opacity: 1; } to { opacity: 0.7; } }
 
-        .utility-zone { margin-top: 40px; border-top: 1px solid #333; padding-top: 20px; }
+        .utility-zone { margin-top: 40px; border-top: 1px solid #333; padding-top: 20px; padding-bottom: 30px; }
         .preset-actions { display: flex; gap: 8px; margin-bottom: 10px; }
         #preset-list { display: flex; flex-wrap: wrap; gap: 5px; }
     </style>
@@ -111,6 +123,7 @@
         <button class="btn btn-start" onclick="startTimer()">タイマー開始</button>
 
         <div class="utility-zone">
+            <h3>プリセット & 共有</h3>
             <div class="preset-actions">
                 <input type="text" id="preset-name" placeholder="プリセット名" style="flex:1">
                 <button class="btn btn-icon" onclick="savePreset()">保存</button>
@@ -125,40 +138,95 @@
     <div id="current-label">READY</div>
     <div id="time-display">00:00</div>
     <div class="timer-controls">
-        <button class="btn btn-icon btn-large" onclick="prevStep()">◀ 戻る</button>
-        <button class="btn btn-icon btn-large" onclick="nextStep()">次へ ▶</button>
+        <button class="btn btn-icon btn-large" id="prev-btn" onclick="prevStep()">◀ 戻る</button>
+        <button class="btn btn-icon btn-large" id="next-btn" onclick="nextStep()">次へ ▶</button>
         <button class="btn btn-large full-width" id="pause-btn" onclick="togglePause()" style="background:var(--accent-color); color:#000;">一時停止</button>
-        <button class="btn btn-danger btn-large full-width" onclick="stopTimer()">設定に戻る</button>
+        <button class="btn btn-large full-width" id="stop-alarm-btn" onclick="stopAlarmUI()">アラームを止める</button>
+        <button class="btn btn-danger btn-large full-width" id="back-btn" onclick="stopTimer()">設定に戻る</button>
     </div>
 </div>
 
 <script>
-    // --- 初期データ ---
     let steps = [
         { label: "準備", m: 2, s: 0 },
-        { label: "インターバル", m: 0, s: 3 },
-        { label: "本番", m: 1, s: 0 }
+        { label: "本番", m: 1, s: 0 },
+        { label: "休憩", m: 0, s: 30 }
     ];
     let currentStepIndex = 0;
     let timeLeft = 0;
     let timerId = null;
     let isPaused = false;
+    let alarmIntervalId = null;
+    let alarmTimeoutId = null;
 
-    // 音声処理
+    // --- Sound System (Kitchen Timer Style) ---
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    function playBeep() {
-        if (audioCtx.state === 'suspended') audioCtx.resume();
+
+    function createBeep(freq, duration, startTime) {
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
-        osc.connect(gain); gain.connect(audioCtx.destination);
-        osc.frequency.setValueAtTime(880, audioCtx.currentTime);
-        gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-        osc.start();
-        gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.5);
-        osc.stop(audioCtx.currentTime + 0.5);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        // キッチンタイマーの「太い音」を再現するため square を採用
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(freq, startTime);
+        
+        // 音量を最大級にブースト: 0.8
+        gain.gain.setValueAtTime(0.8, startTime);
+        // 少しの余韻を残して「太さ」を出す
+        gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+        
+        osc.start(startTime);
+        osc.stop(startTime + duration);
     }
 
-    // 描画処理
+    function playStepSound() {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const now = audioCtx.currentTime;
+        // キッチンタイマー風の 2ステップ音 (Pi-pi!)
+        createBeep(2400, 0.1, now);
+        createBeep(2400, 0.1, now + 0.15);
+    }
+
+    function playFinalAlarm() {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        
+        const playSequence = () => {
+            const now = audioCtx.currentTime;
+            // キッチンタイマー特有の 4回連続音 (Pi-pi-pi-pi!)
+            for (let i = 0; i < 4; i++) {
+                createBeep(2400, 0.08, now + (i * 0.15));
+            }
+        };
+
+        playSequence(); // 即座に1回目
+        // 1秒ごとにループ。非ブロッキングUIにすることで止まらずに鳴り続けます。
+        alarmIntervalId = setInterval(playSequence, 1000);
+
+        // 30秒後に強制停止
+        alarmTimeoutId = setTimeout(() => {
+            stopAlarmUI();
+        }, 30000);
+    }
+
+    function stopAlarmUI() {
+        if (alarmIntervalId) {
+            clearInterval(alarmIntervalId);
+            alarmIntervalId = null;
+        }
+        if (alarmTimeoutId) {
+            clearTimeout(alarmTimeoutId);
+            alarmTimeoutId = null;
+        }
+        // UIを元に戻す
+        document.getElementById('stop-alarm-btn').style.display = 'none';
+        document.getElementById('pause-btn').style.display = 'inline-flex';
+        document.getElementById('prev-btn').style.visibility = 'visible';
+        document.getElementById('next-btn').style.visibility = 'visible';
+    }
+
+    // --- Timer Logic ---
     function renderSteps() {
         const list = document.getElementById('step-list');
         if (!list) return;
@@ -167,10 +235,13 @@
             const div = document.createElement('div');
             div.className = 'step-item';
             div.innerHTML = `
-                <span class="handle" style="color:#666; padding:0 5px">☰</span>
-                <input type="text" value="${step.label}" onchange="updateStep(${index}, 'label', this.value)" style="flex:2; min-width:60px">
-                <input type="number" value="${step.m}" onchange="updateStep(${index}, 'm', this.value)" style="width:40px">分
-                <input type="number" value="${step.s}" onchange="updateStep(${index}, 's', this.value)" style="width:40px">秒
+                <span class="handle" style="color:#666; padding:0 5px; cursor:grab;">☰</span>
+                <input type="text" value="${step.label}" onchange="updateStep(${index}, 'label', this.value)" style="flex:1; min-width:60px">
+                <input type="number" value="${step.m}" onchange="updateStep(${index}, 'm', this.value)" style="width:38px">
+                <span style="font-size:0.7rem">分</span>
+                <input type="number" value="${step.s}" onchange="updateStep(${index}, 's', this.value)" style="width:38px">
+                <span style="font-size:0.7rem">秒</span>
+                <button class="btn btn-icon" onclick="duplicateStep(${index})" title="複製">❐</button>
                 <button class="btn btn-icon btn-danger" onclick="removeStep(${index})">✕</button>
             `;
             list.appendChild(div);
@@ -187,25 +258,36 @@
         renderSteps();
     }
 
+    function duplicateStep(index) {
+        const copy = { ...steps[index] };
+        steps.splice(index + 1, 0, copy);
+        renderSteps();
+    }
+
     function removeStep(index) {
         if (steps.length > 1) { steps.splice(index, 1); renderSteps(); }
     }
 
-    // タイマー制御
     function startTimer() {
+        if (steps.length === 0) return;
+        stopAlarmUI();
         currentStepIndex = 0;
-        initStep();
+        initStep(false); 
         document.getElementById('setup-view').style.display = 'none';
         document.getElementById('timer-view').style.display = 'flex';
+        document.getElementById('pause-btn').style.display = 'inline-flex';
+        document.getElementById('stop-alarm-btn').style.display = 'none';
+        document.getElementById('prev-btn').style.visibility = 'visible';
+        document.getElementById('next-btn').style.visibility = 'visible';
         if (timerId) clearInterval(timerId);
         timerId = setInterval(tick, 1000);
     }
 
-    function initStep() {
+    function initStep(playSound = true) {
         const step = steps[currentStepIndex];
-        timeLeft = (step.m * 60) + step.s;
+        timeLeft = (step.m * 60) + (step.s || 0);
         updateDisplay();
-        playBeep();
+        if (playSound) playStepSound();
     }
 
     function updateDisplay() {
@@ -219,19 +301,26 @@
     function tick() {
         if (isPaused) return;
         timeLeft--;
-        if (timeLeft < 0) nextStep();
-        else updateDisplay();
+        if (timeLeft < 0) {
+            nextStep();
+        } else {
+            updateDisplay();
+        }
     }
 
     function nextStep() {
         currentStepIndex++;
-        if (currentStepIndex < steps.length) initStep();
-        else { alert("完了！"); stopTimer(); }
+        if (currentStepIndex < steps.length) {
+            initStep(true);
+        } else {
+            finish();
+        }
     }
 
     function prevStep() {
+        stopAlarmUI();
         currentStepIndex = Math.max(0, currentStepIndex - 1);
-        initStep();
+        initStep(true);
     }
 
     function togglePause() {
@@ -241,12 +330,29 @@
 
     function stopTimer() {
         clearInterval(timerId);
+        stopAlarmUI();
         isPaused = false;
         document.getElementById('setup-view').style.display = 'block';
         document.getElementById('timer-view').style.display = 'none';
+        document.getElementById('pause-btn').innerText = "一時停止";
     }
 
-    // プリセット保存
+    function finish() {
+        clearInterval(timerId);
+        timerId = null;
+        document.getElementById('time-display').innerText = "00:00";
+        document.getElementById('current-label').innerText = "ALL FINISHED!";
+        
+        // ボタンの切り替え: 一時停止と戻る/次へを隠し、アラーム停止ボタンを表示
+        document.getElementById('pause-btn').style.display = 'none';
+        document.getElementById('prev-btn').style.visibility = 'hidden';
+        document.getElementById('next-btn').style.visibility = 'hidden';
+        document.getElementById('stop-alarm-btn').style.display = 'inline-flex';
+        
+        playFinalAlarm();
+    }
+
+    // --- Presets & Utility ---
     function savePreset() {
         const name = document.getElementById('preset-name').value || "無題";
         const presets = JSON.parse(localStorage.getItem('cycle_timer_presets') || '{}');
@@ -272,16 +378,12 @@
         const data = btoa(encodeURIComponent(JSON.stringify(steps)));
         const url = window.location.origin + window.location.pathname + '#data=' + data;
         navigator.clipboard.writeText(url);
-        alert("URLをコピーしました");
+        alert("共有URLをコピーしました");
     }
 
-    // 起動時の処理
     window.onload = () => {
-        // 1. まず描画（最優先）
         renderSteps();
         loadPresetList();
-
-        // 2. URLからの読み込み
         const hash = window.location.hash;
         if (hash.startsWith('#data=')) {
             try {
@@ -289,8 +391,6 @@
                 if (Array.isArray(data)) { steps = data; renderSteps(); }
             } catch (e) { console.error(e); }
         }
-
-        // 3. 並び替え機能（読み込みに失敗してもタイマーを壊さないようtry-catchで囲む）
         try {
             if (typeof Sortable !== 'undefined') {
                 Sortable.create(document.getElementById('step-list'), {
@@ -300,13 +400,17 @@
                         const newSteps = [];
                         document.querySelectorAll('.step-item').forEach(el => {
                             const inputs = el.querySelectorAll('input');
-                            newSteps.push({ label: inputs[0].value, m: parseInt(inputs[1].value)||0, s: parseInt(inputs[2].value)||0 });
+                            newSteps.push({ 
+                                label: inputs[0].value, 
+                                m: parseInt(inputs[1].value)||0, 
+                                s: parseInt(inputs[2].value)||0 
+                            });
                         });
                         steps = newSteps;
                     }
                 });
             }
-        } catch (e) { console.warn("Sortableの初期化に失敗しましたが、タイマーは利用可能です。"); }
+        } catch (e) { console.warn("Sortable inactive"); }
     };
 </script>
 
