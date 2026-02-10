@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Professional Cycle Timer</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --card-bg: #1e1e1e;
+            --text-color: #e0e0e0;
+            --accent-color: #00e5ff;
+            --danger-color: #cf6679;
+            --success-color: #03dac6;
+            --border-color: #333;
+        }
+
+        body {
+            font-family: sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .container { width: 100%; max-width: 600px; padding: 20px; }
+        h1 { text-align: center; color: var(--accent-color); font-weight: 200; letter-spacing: 2px; }
+
+        /* 設定画面 */
+        .step-item {
+            background: var(--card-bg);
+            margin-bottom: 10px;
+            padding: 12px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-left: 4px solid var(--accent-color);
+        }
+
+        input[type="text"] { flex: 2; padding: 8px; background: #2c2c2c; border: 1px solid #444; color: white; border-radius: 4px; }
+        input[type="number"] { width: 45px; padding: 8px; background: #2c2c2c; border: 1px solid #444; color: white; border-radius: 4px; }
+
+        .btn {
+            cursor: pointer; border: none; border-radius: 4px; padding: 8px 12px; font-weight: bold;
+            transition: opacity 0.2s; display: inline-flex; align-items: center; justify-content: center;
+        }
+        .btn:hover { opacity: 0.8; }
+        .btn-add { background: var(--accent-color); color: #000; width: 100%; margin: 10px 0 20px 0; font-size: 1rem; }
+        .btn-start { background: var(--success-color); color: #000; width: 100%; font-size: 1.2rem; padding: 15px; margin-top: 20px; }
+        .btn-icon { background: transparent; color: var(--text-color); border: 1px solid #444; }
+        .btn-danger { color: var(--danger-color); font-size: 0.8rem; }
+
+        /* タイマー画面 (Focus Mode) */
+        #timer-view {
+            display: none; text-align: center; position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--bg-color); flex-direction: column;
+            justify-content: center; align-items: center; z-index: 100;
+        }
+        #current-label { font-size: 2rem; margin-bottom: 10px; color: var(--accent-color); }
+        #time-display { font-size: 9rem; font-weight: bold; font-family: monospace; }
+        .timer-controls { display: flex; gap: 15px; margin-top: 30px; }
+        .btn-large { padding: 15px 30px; font-size: 1.1rem; min-width: 120px; border-radius: 30px; }
+
+        /* 保存・共有エリア */
+        .utility-zone { margin-top: 40px; border-top: 1px solid var(--border-color); padding-top: 20px; }
+        #preset-list { display: flex; flex-wrap: wrap; gap: 5px; margin: 10px 0; }
+        #share-area { background: #000; padding: 15px; border-radius: 5px; margin-top: 10px; display: none; }
+        #share-link { color: var(--accent-color); word-break: break-all; font-size: 0.8rem; }
+    </style>
+</head>
+<body>
+
+<div class="container" id="setup-view">
+    <h1>CYCLE TIMER</h1>
+    
+    <div id="step-list"></div>
+    
+    <button class="btn btn-add" onclick="addStep()">＋ ステップを追加</button>
+    <button class="btn btn-start" onclick="startTimer()">タイマー開始</button>
+
+    <div class="utility-zone">
+        <h3>保存と共有</h3>
+        <div style="display:flex; gap:5px;">
+            <input type="text" id="preset-name" placeholder="プリセット名" style="flex:1;">
+            <button class="btn btn-icon" onclick="savePreset()">保存</button>
+        </div>
+        <div id="preset-list"></div>
+        <button class="btn btn-icon" style="width:100%;" onclick="generateShareUrl()">📤 共有URLを発行</button>
+        <div id="share-area">
+            <a id="share-link" href="#" target="_blank"></a>
+        </div>
+    </div>
+</div>
+
+<div id="timer-view">
+    <div id="current-label">-</div>
+    <div id="time-display">00:00</div>
+    <div class="timer-controls">
+        <button class="btn btn-icon btn-large" onclick="prevStep()">◀ 戻る</button>
+        <button class="btn btn-large" id="pause-btn" onclick="togglePause()" style="background:var(--accent-color); color:#000;">一時停止</button>
+        <button class="btn btn-icon btn-large" onclick="nextStep()">次へ ▶</button>
+        <button class="btn btn-danger btn-large" onclick="stopTimer()" style="background:transparent; border:1px solid var(--danger-color);">終了</button>
+    </div>
+</div>
+
+<script>
+    // データ管理
+    let steps = [
+        { label: "導入", m: 2, s: 0 },
+        { label: "休憩", m: 0, s: 3 },
+        { label: "本番", m: 1, s: 0 },
+        { label: "終了", m: 0, s: 3 }
+    ];
+    let currentStepIndex = 0;
+    let timeLeft = 0;
+    let timerId = null;
+    let isPaused = false;
+
+    // --- 音 ---
+    function playBeep() {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const g = ctx.createGain();
+            osc.connect(g); g.connect(ctx.destination);
+            osc.frequency.value = 880;
+            g.gain.setValueAtTime(0.1, ctx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.5);
+            osc.start(); osc.stop(ctx.currentTime + 0.5);
+        } catch(e) {}
+    }
+
+    // --- メイン描画 ---
+    function render() {
+        const list = document.getElementById('step-list');
+        list.innerHTML = '';
+        steps.forEach((step, i) => {
+            const item = document.createElement('div');
+            item.className = 'step-item';
+            item.innerHTML = `
+                <input type="text" value="${step.label}" oninput="updateStep(${i},'label',this.value)">
+                <input type="number" value="${step.m}" min="0" oninput="updateStep(${i},'m',this.value)">分
+                <input type="number" value="${step.s}" min="0" max="59" oninput="updateStep(${i},'s',this.value)">秒
+                <button class="btn btn-icon" onclick="dupStep(${i})" title="複製">❐</button>
+                <button class="btn btn-icon btn-danger" onclick="delStep(${i})">✕</button>
+            `;
+            list.appendChild(item);
+        });
+    }
+
+    // --- ボタン操作 ---
+    function addStep() {
+        steps.push({ label: "名称未設定", m: 1, s: 0 });
+        render();
+    }
+    function updateStep(i, key, val) {
+        if(key === 'label') steps[i].label = val;
+        else steps[i][key] = parseInt(val) || 0;
+    }
+    function delStep(i) { steps.splice(i, 1); render(); }
+    function dupStep(i) { steps.splice(i + 1, 0, {...steps[i]}); render(); }
+
+    // --- タイマー処理 ---
+    function startTimer() {
+        if(steps.length === 0) return;
+        currentStepIndex = 0; isPaused = false;
+        document.getElementById('setup-view').style.display = 'none';
+        document.getElementById('timer-view').style.display = 'flex';
+        initStep();
+        if(timerId) clearInterval(timerId);
+        timerId = setInterval(() => {
+            if(!isPaused) {
+                if(timeLeft > 0) { timeLeft--; updateTime(); }
+                else { nextStep(); }
+            }
+        }, 1000);
+    }
+
+    function initStep() {
+        timeLeft = (steps[currentStepIndex].m * 60) + steps[currentStepIndex].s;
+        updateTime(); playBeep();
+    }
+
+    function updateTime() {
+        const s = steps[currentStepIndex];
+        document.getElementById('current-label').innerText = `${s.label} (${currentStepIndex + 1}/${steps.length})`;
+        const m = Math.floor(timeLeft / 60);
+        const sec = timeLeft % 60;
+        document.getElementById('time-display').innerText = `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+    }
+
+    function nextStep() {
+        currentStepIndex++;
+        if(currentStepIndex < steps.length) initStep();
+        else { clearInterval(timerId); alert("完了しました！"); stopTimer(); }
+    }
+
+    function prevStep() { currentStepIndex = Math.max(0, currentStepIndex - 1); initStep(); }
+    function togglePause() { isPaused = !isPaused; document.getElementById('pause-btn').innerText = isPaused ? "再開" : "一時停止"; }
+    function stopTimer() { clearInterval(timerId); document.getElementById('setup-view').style.display = 'block'; document.getElementById('timer-view').style.display = 'none'; }
+
+    // --- 保存・共有 ---
+    function savePreset() {
+        const name = document.getElementById('preset-name').value || "無題";
+        const p = JSON.parse(localStorage.getItem('my_presets') || '{}');
+        p[name] = steps;
+        localStorage.setItem('my_presets', JSON.stringify(p));
+        loadPresets();
+    }
+    function loadPresets() {
+        const list = document.getElementById('preset-list');
+        const p = JSON.parse(localStorage.getItem('my_presets') || '{}');
+        list.innerHTML = '';
+        for(let n in p) {
+            const b = document.createElement('button');
+            b.className = 'btn btn-icon'; b.innerText = n;
+            b.onclick = () => { steps = p[n]; render(); };
+            list.appendChild(b);
+        }
+    }
+    function generateShareUrl() {
+        const data = btoa(encodeURIComponent(JSON.stringify(steps)));
+        const url = window.location.href.split('#')[0] + '#data=' + data;
+        const link = document.getElementById('share-link');
+        link.href = url; link.innerText = url;
+        document.getElementById('share-area').style.display = 'block';
+        navigator.clipboard.writeText(url);
+        alert("URLをコピーしました！チャット等に貼り付けてください。");
+    }
+
+    // 初期起動
+    const h = window.location.hash;
+    if(h.startsWith('#data=')) {
+        try { steps = JSON.parse(decodeURIComponent(atob(h.replace('#data=','')))); } catch(e){}
+    }
+    loadPresets();
+    render();
+</script>
+</body>
+</html>
