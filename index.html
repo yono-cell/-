@@ -149,7 +149,6 @@
     // --- Data Management ---
     const STORAGE_KEY = 'active_cycle_timer_steps';
     
-    // 【初期値のカスタマイズ】
     let steps = [
         { label: "PRタイム", m: 2, s: 0 },
         { label: "インターバル", m: 0, s: 3 },
@@ -173,18 +172,22 @@
         localStorage.setItem(STORAGE_KEY, JSON.stringify(steps));
     }
 
-    // --- Sound System (Kitchen Timer Style) ---
+    // --- Sound System (Professional Square Wave) ---
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const BEEP_FREQ = 2700; // 2500Hz-3000Hzの中間域（突き抜ける高音）
 
     function createBeep(freq, duration, startTime) {
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
         osc.connect(gain);
         gain.connect(audioCtx.destination);
-        osc.type = 'square';
+        
+        osc.type = 'square'; // 電子ブザー特有の硬い波形
         osc.frequency.setValueAtTime(freq, startTime);
+        
         gain.gain.setValueAtTime(0.8, startTime);
         gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+        
         osc.start(startTime);
         osc.stop(startTime + duration);
     }
@@ -192,8 +195,8 @@
     function playStepSound() {
         if (audioCtx.state === 'suspended') audioCtx.resume();
         const now = audioCtx.currentTime;
-        createBeep(2400, 0.1, now);
-        createBeep(2400, 0.1, now + 0.15);
+        createBeep(BEEP_FREQ, 0.1, now);
+        createBeep(BEEP_FREQ, 0.1, now + 0.15);
     }
 
     function playFinalAlarm() {
@@ -201,7 +204,7 @@
         const playSequence = () => {
             const now = audioCtx.currentTime;
             for (let i = 0; i < 4; i++) {
-                createBeep(2400, 0.08, now + (i * 0.15));
+                createBeep(BEEP_FREQ, 0.08, now + (i * 0.15));
             }
         };
         playSequence();
@@ -372,19 +375,15 @@
 
     // --- Initialization ---
     window.onload = () => {
-        // 1. 保存データの確認
         const savedData = localStorage.getItem(STORAGE_KEY);
-        // 2. 共有URLデータの確認
         const hash = window.location.hash;
 
         if (hash.startsWith('#data=')) {
-            // URL共有がある場合はそれを最優先
             try {
                 const data = JSON.parse(decodeURIComponent(atob(hash.replace('#data=', ''))));
                 if (Array.isArray(data)) { steps = data; autoSave(); }
             } catch (e) { console.error("URL load failed", e); }
         } else if (savedData) {
-            // URL共有がなく、保存データがある場合は保存データを表示
             try {
                 const parsed = JSON.parse(savedData);
                 if (Array.isArray(parsed) && parsed.length > 0) {
@@ -392,7 +391,6 @@
                 }
             } catch (e) { console.error("Auto-load failed", e); }
         }
-        // いずれもなければ、コード内の「初期値」がそのまま使われる
 
         renderSteps();
         loadPresetList();
