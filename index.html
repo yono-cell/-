@@ -146,7 +146,6 @@
 </div>
 
 <script>
-    // --- Data Management ---
     const STORAGE_KEY = 'active_cycle_timer_steps';
     
     let steps = [
@@ -172,18 +171,27 @@
         localStorage.setItem(STORAGE_KEY, JSON.stringify(steps));
     }
 
-    // --- Sound System (Professional Square Wave) ---
+    // --- Sound System (Professional Filtered Design) ---
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const BEEP_FREQ = 2700; // 2500Hz-3000Hzの中間域（突き抜ける高音）
 
     function createBeep(freq, duration, startTime) {
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
-        osc.connect(gain);
+        const filter = audioCtx.createBiquadFilter(); // フィルターの追加
+
+        // 回路接続: Oscillator -> Filter -> Gain -> Destination
+        osc.connect(filter);
+        filter.connect(gain);
         gain.connect(audioCtx.destination);
         
-        osc.type = 'square'; // 電子ブザー特有の硬い波形
+        // 矩形波 (Square Wave)
+        osc.type = 'square';
         osc.frequency.setValueAtTime(freq, startTime);
+        
+        // ローパスフィルター設定
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(3000, startTime); // 3000Hz以上をカット
+        filter.Q.setValueAtTime(1, startTime); // 少しのレゾナンスで厚みを出す
         
         gain.gain.setValueAtTime(0.8, startTime);
         gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
@@ -195,8 +203,9 @@
     function playStepSound() {
         if (audioCtx.state === 'suspended') audioCtx.resume();
         const now = audioCtx.currentTime;
-        createBeep(BEEP_FREQ, 0.1, now);
-        createBeep(BEEP_FREQ, 0.1, now + 0.15);
+        // 2800Hzのフィルタリングされた矩形波
+        createBeep(2800, 0.1, now);
+        createBeep(2800, 0.1, now + 0.15);
     }
 
     function playFinalAlarm() {
@@ -204,7 +213,7 @@
         const playSequence = () => {
             const now = audioCtx.currentTime;
             for (let i = 0; i < 4; i++) {
-                createBeep(BEEP_FREQ, 0.08, now + (i * 0.15));
+                createBeep(2800, 0.08, now + (i * 0.15));
             }
         };
         playSequence();
@@ -221,7 +230,7 @@
         document.getElementById('next-btn').style.visibility = 'visible';
     }
 
-    // --- UI Logic ---
+    // --- 以下、既存ロジックに変更なし ---
     function renderSteps() {
         const list = document.getElementById('step-list');
         if (!list) return;
@@ -373,7 +382,6 @@
         alert("共有URLをコピーしました");
     }
 
-    // --- Initialization ---
     window.onload = () => {
         const savedData = localStorage.getItem(STORAGE_KEY);
         const hash = window.location.hash;
@@ -386,9 +394,7 @@
         } else if (savedData) {
             try {
                 const parsed = JSON.parse(savedData);
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                    steps = parsed;
-                }
+                if (Array.isArray(parsed) && parsed.length > 0) { steps = parsed; }
             } catch (e) { console.error("Auto-load failed", e); }
         }
 
